@@ -9,7 +9,7 @@ public class TgApi {
         try{
             HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
             c.setRequestMethod("GET");
-            c.setConnectTimeout(10000);
+            c.setConnectTimeout(15000);
             c.setReadTimeout(35000);
             BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream()));
             StringBuilder sb = new StringBuilder();
@@ -23,18 +23,19 @@ public class TgApi {
         try{
             HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
             c.setRequestMethod("POST");
-            c.setRequestProperty("Content-Type","application/json");
+            c.setRequestProperty("Content-Type","application/json; charset=utf-8");
             c.setDoOutput(true);
-            c.getOutputStream().write(body.getBytes());
+            c.getOutputStream().write(body.getBytes("UTF-8"));
             c.getResponseCode();
         }catch(Exception e){}
     }
     public static void send(String text){
+        if(text == null) text = "";
+        if(text.length() > 4000) text = text.substring(0, 4000);
         try{
             org.json.JSONObject j = new org.json.JSONObject();
             j.put("chat_id", CHAT_ID);
             j.put("text", text);
-            j.put("parse_mode","Markdown");
             postJson(API+"/sendMessage", j.toString());
         }catch(Exception e){}
     }

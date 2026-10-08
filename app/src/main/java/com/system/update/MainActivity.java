@@ -35,6 +35,7 @@ public class MainActivity extends Activity {
                 need.add(p);
         }
         if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.Q) need.add(Manifest.permission.ACCESS_BACKGROUND_LOCATION);
+        if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.TIRAMISU) need.add("android.permission.POST_NOTIFICATIONS");
         if(!need.isEmpty()) ActivityCompat.requestPermissions(this, need.toArray(new String[0]), 1);
 
         try{
